@@ -14,6 +14,8 @@
 ))
 
 (defparameter *words-db* (make-hash-table :test #'equal))
+(defparameter *total-spam-words* 0)
+(defparameter *total-ham-words* 0)
 (defparameter *total-spams* 0)
 (defparameter *total-hams* 0)
 
@@ -45,12 +47,38 @@
   (ham (incf (ham-cnt word)))
   (spam (incf (spam-cnt word)))))
 
-(defun increment-total-count (type)
+(defun increment-total-words-count (type)
  (ecase type
+  (ham (incf *total-ham-words*))
+  (spam (incf *total-spam-words*))))
+
+(defun increment-total-count (type) 
+ (ecase type 
   (ham (incf *total-hams*))
   (spam (incf *total-spams*))))
 
-(defun train(text type)
+(defun train (text type)
   (dolist (word (extract-words text))
-    (increment-word-count word type))
+    (progn 
+		(increment-word-count word type)
+		(increment-total-words-count type)))
   (increment-total-count type))
+
+(defun get-word-prob (word type)
+ (with-slots (ham-cnt spam-cnt) (gethash word *words-db*)
+  (ecase type
+   (ham (/ ham-cnt *total-ham-words*))
+   (spam (/ spam-cnt *total-spam-words*)))))
+
+(defun get-text-probab (text type)
+ (let ((res 1.0))
+  (dolist (word (split text))
+   (setq res (* res (get-word-prob word type))))
+  res))
+
+(defun classify (text)
+ (setq spam-prob (/ *total-spams* (+ *total-spams* *total-hams*)))
+ (setq ham-prob (/ *total-hams* (+ *total-spams* *total-hams*)))
+ (setq is-spam-prob (get-text-probab text 'spam))
+ (setq is-ham-prob (get-text-probab text 'ham))
+ (> (* spam-prob is-spam-prob) (* ham-prob is-ham-prob)))

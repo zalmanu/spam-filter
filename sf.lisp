@@ -14,13 +14,33 @@
 	:initform 0)
 ))
 
-(defparameter *words-db* (make-hash-table :test #'equal))
-(defparameter *total-spam-words* 0)
-(defparameter *total-ham-words* 0)
-(defparameter *total-spams* 0)
-(defparameter *total-hams* 0)
-(defparameter *total-words* 0)
-(defparameter *alpha* 1)
+(defvar *words-db* (make-hash-table :test #'equal))
+(defvar *total-spam-words* 0)
+(defvar *total-ham-words* 0)
+(defvar *total-spams* 0)
+(defvar *total-hams* 0)
+(defvar *total-words* 0)
+(defvar *alpha* 1)
+
+(defparameter *erroneous-spam-res* 0)
+(defparameter *erroneous-ham-res* 0)
+
+(defparameter *spam-test-dir* "dataset/test/spam")
+(defparameter *ham-test-dir* "dataset/test/ham")
+
+(defun clear-training-data ()
+  (setf
+   *words-db* (make-hash-table :test #'equal)
+   *total-spam-words* 0
+   *total-ham-words* 0
+   *total-spams* 0
+   *total-hams* 0
+   *total-words* 0))
+
+(defun clear-classifications-result ()
+ (setf 
+  *erroneous-spam-res* 0
+  *erroneous-ham-res* 0))
 
 (defun split (text)
   (delete-duplicates
@@ -65,26 +85,16 @@
 		(increment-total-words-count type)))
   (increment-total-count type))
 
-(defun read-file (fname) 
- (with-open-file (stream fname)
-  (let ((data (make-string (file-length stream))))
-   (read-sequence data stream)
-   data)))
-
-(defun train-from-dir (dir type)
- (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
-   (ignore-errors (train (read-file fname) type))))
-
 (defun get-word-prob (word type)
  (with-slots (ham-cnt spam-cnt) (gethash word *words-db* (make-instance 'words-count))
   (ecase type
-   (ham (/ (+ ham-cnt *alpha*) (+ *total-ham-words* (* *alpha* *total-words*))))
-   (spam (/ (+ spam-cnt *alpha*) (+ *total-spam-words* (* *alpha* *total-words*)))))))
+   (ham (coerce (/ (+ ham-cnt *alpha*) (+ *total-ham-words* (* *alpha* *total-words*))) 'long-float))
+   (spam (coerce (/ (+ spam-cnt *alpha*) (+ *total-spam-words* (* *alpha* *total-words*))) 'long-float)))))
 
 (defun get-text-probab (text type)
  (let ((res 1.0))
   (dolist (word (split text))
-   (setq res (* res (get-word-prob word type))))
+   (setq res (coerce (* res (get-word-prob word type)) 'long-float)))
   res))
 
 (defun classify (text)
@@ -97,3 +107,31 @@
  (if (> (* spam-prob is-spam-prob) (* ham-prob is-ham-prob))
   (return-from classify 'spam)
   (return-from classify 'ham)))
+
+(defun read-file (fname) 
+ (with-open-file (stream fname)
+  (let ((data (make-string (file-length stream))))
+   (read-sequence data stream)
+   data)))
+
+(defun train-from-dir (dir type)
+ (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
+   (ignore-errors (train (read-file fname) type))))
+
+(defun increment-erroneous-result (type)
+ (ecase type
+  (ham (incf *erroneous-ham-res*))
+  (spam (incf *erroneous-spam-res*))))
+
+(defun classify-from-dir (dir type)
+ (let ((res 'error))
+   (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
+     (ignore-errors (setq res (classify (read-file fname))))
+     (if (not (eq res type))
+	  (increment-erroneous-result type)))))
+
+(defun test-classification ()
+ (classify-from-dir *ham-test-dir* 'ham)
+ (classify-from-dir *spam-test-dir* 'spam)
+ (format t "Wrong hams: ~D~%Wrong spams: ~D" *erroneous-ham-res* *erroneous-spam-res*)
+ (clear-classifications-result))

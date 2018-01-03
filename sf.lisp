@@ -1,6 +1,7 @@
 (defpackage :spamfilter (:use :common-lisp))
 
 (ql:quickload :cl-ppcre)
+(ql:quickload :com.gigamonkeys.pathnames)
 
 (defclass words-count () 
   ((spam-cnt 
@@ -26,29 +27,20 @@
     (cl-ppcre:all-matches-as-strings "[a-zA-Z]{2,}" text)
     :test #'string=))
 
-(defun get-or-create-word (word)
+(defun save-word(word)
   (or (gethash word *words-db*) 
       (setf (gethash word *words-db*) 
             (make-instance 'words-count))))
 
-(defun save-word (word) 
- (get-or-create-word word))
-
-(defun get-word(word) 
- (get-or-create-word word))
-
 (defun extract-words (text) 
   (mapcar #'save-word (split text)))
 
-(defun print-hash-map (hash-map)
-  (loop for value being the hash-values of hash-map
+(defun print-words-db () 
+  (loop for value being the hash-values of *words-db*
     using (hash-key key) 
     do (
       with-slots (ham-cnt spam-cnt) value
       (format t "~&~A: ham - ~d, spam - ~d" key ham-cnt spam-cnt))))
-
-(defun print-words-db () 
- (print-hash-map *words-db*))
 
 (defun increment-word-count (word type)
  (ecase type 
@@ -73,8 +65,18 @@
 		(increment-total-words-count type)))
   (increment-total-count type))
 
+(defun read-file (fname) 
+ (with-open-file (stream fname)
+  (let ((data (make-string (file-length stream))))
+   (read-sequence data stream)
+   data)))
+
+(defun train-from-dir (dir type)
+ (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
+   (ignore-errors (train (read-file fname) type))))
+
 (defun get-word-prob (word type)
- (with-slots (ham-cnt spam-cnt) (get-word word)
+ (with-slots (ham-cnt spam-cnt) (gethash word *words-db* (make-instance 'words-count))
   (ecase type
    (ham (/ (+ ham-cnt *alpha*) (+ *total-ham-words* (* *alpha* *total-words*))))
    (spam (/ (+ spam-cnt *alpha*) (+ *total-spam-words* (* *alpha* *total-words*)))))))
@@ -86,6 +88,8 @@
   res))
 
 (defun classify (text)
+ (if (= (+ *total-hams* *total-spams*) 0) 
+  (return-from classify 'unsure))
  (setq spam-prob (/ *total-spams* (+ *total-spams* *total-hams*)))
  (setq ham-prob (/ *total-hams* (+ *total-spams* *total-hams*)))
  (setq is-spam-prob (get-text-probab text 'spam))

@@ -9,9 +9,9 @@
   :accessor spam-cnt
   :initform 0)
    (ham-cnt 
-	:initarg :ham-cnt
-	:accessor ham-cnt
-	:initform 0)
+  :initarg :ham-cnt
+  :accessor ham-cnt
+  :initform 0)
 ))
 
 (defvar *words-db* (make-hash-table :test #'equal))
@@ -21,9 +21,6 @@
 (defvar *total-hams* 0)
 (defvar *total-words* 0)
 (defvar *alpha* 1)
-
-(defparameter *erroneous-spam-res* 0)
-(defparameter *erroneous-ham-res* 0)
 
 (defparameter *spam-test-dir* "dataset/test/spam")
 (defparameter *ham-test-dir* "dataset/test/ham")
@@ -36,11 +33,6 @@
    *total-spams* 0
    *total-hams* 0
    *total-words* 0))
-
-(defun clear-classifications-result ()
- (setf 
-  *erroneous-spam-res* 0
-  *erroneous-ham-res* 0))
 
 (defun split (text)
   (delete-duplicates
@@ -102,8 +94,8 @@
   (return-from classify 'unsure))
  (setq spam-prob (/ *total-spams* (+ *total-spams* *total-hams*)))
  (setq ham-prob (/ *total-hams* (+ *total-spams* *total-hams*)))
- (setq is-spam-prob (get-text-probab text 'spam))
- (setq is-ham-prob (get-text-probab text 'ham))
+ (setq is-spam-prob (get-text-probab text 'spam))                    
+ (setq is-ham-prob (get-text-probab text 'ham))	                     
  (if (> (* spam-prob is-spam-prob) (* ham-prob is-ham-prob))
   (return-from classify 'spam)
   (return-from classify 'ham)))
@@ -118,20 +110,18 @@
  (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
    (ignore-errors (train (read-file fname) type))))
 
-(defun increment-erroneous-result (type)
- (ecase type
-  (ham (incf *erroneous-ham-res*))
-  (spam (incf *erroneous-spam-res*))))
-
 (defun classify-from-dir (dir type)
- (let ((res 'error))
+ (let ((res 'error)
+	   (total 0)
+	   (err 0))
    (dolist (fname (com.gigamonkeys.pathnames:list-directory dir))
+	 (incf total)
      (ignore-errors (setq res (classify (read-file fname))))
      (if (not (eq res type))
-	  (increment-erroneous-result type)))))
+	  (incf err)))
+   (return-from classify-from-dir (list err total))))
 
 (defun test-classification ()
- (classify-from-dir *ham-test-dir* 'ham)
- (classify-from-dir *spam-test-dir* 'spam)
- (format t "Wrong hams: ~D~%Wrong spams: ~D" *erroneous-ham-res* *erroneous-spam-res*)
- (clear-classifications-result))
+ (setq ham-res (classify-from-dir *ham-test-dir* 'ham))
+ (setq spam-res (classify-from-dir *spam-test-dir* 'spam))
+ (format t "Wrong hams: ~D/~D~%Wrong spams: ~D/~D" (car ham-res) (cadr ham-res) (car spam-res) (cadr spam-res)))
